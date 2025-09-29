@@ -33,9 +33,11 @@ jobs:
         with:
           ruby-version: 3.1
 
-      # 5️⃣ Install fastlane
-      - name: Install fastlane
-        run: gem install fastlane
+      # 5️⃣ Install bundler & fastlane
+      - name: Install bundler & fastlane
+        run: |
+          gem install bundler
+          bundle install || gem install fastlane
 
       # 6️⃣ Setup Certificates & Provisioning Profile
       - name: Setup iOS Certificates
@@ -48,11 +50,13 @@ jobs:
           cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
           security list-keychains -s build.keychain
 
-      # 7️⃣ iOS Build using fastlane
+      # 7️⃣ Build iOS IPA using fastlane
       - name: Build iOS IPA
         run: |
-          fastlane gym \
+          bundle exec fastlane gym \
+            --workspace "CICDDEMOAPP.xcworkspace" \   # ⬅️ use .xcworkspace if using CocoaPods
             --scheme "CICDDEMOAPP" \
+            --configuration "Release" \
             --export_method "development" \
             --clean \
             --output_directory "./build" \
