@@ -2,7 +2,8 @@ name: "Build iOS IPA"
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main" ]  # automatically runs on push to main
+  workflow_dispatch:       # optional manual trigger
 
 jobs:
   build_ios:
@@ -29,6 +30,7 @@ jobs:
           PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
 
+          # Decode certificate and provisioning profile
           echo "$IOS_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
           echo "$IOS_DEVELOPMENT_PROFILE_BASE64" | base64 --decode > $PROFILE_PATH
 
@@ -54,10 +56,10 @@ jobs:
         run: |
           npm install
           cd ios
-          pod install
+          pod install --repo-update
           cd ..
 
-      # 5️⃣ Build Xcode archive
+      # 5️⃣ Build Xcode archive (generic iOS device)
       - name: Build archive
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
@@ -69,6 +71,7 @@ jobs:
           -configuration Release \
           -sdk iphoneos \
           -archivePath $RUNNER_TEMP/CICDDEMOAPP.xcarchive \
+          -destination "generic/platform=iOS" \
           DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
           CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" \
           PRODUCT_BUNDLE_IDENTIFIER=$APPLE_BUNDLE_ID \
