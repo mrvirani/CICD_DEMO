@@ -1,13 +1,11 @@
 name: "Build iOS IPA"
-
 on:
   push:
     branches: [ "main" ]
-
+    
 jobs:
   build_ios:
     runs-on: macos-latest
-
     steps:
       # 1️⃣ Checkout repository
       - name: Checkout repository
@@ -17,7 +15,7 @@ jobs:
       - name: Check Xcode version
         run: xcodebuild -version
 
-      # 3️⃣ Setup keychain and provisioning profile
+      # 3️⃣ Setup keychain and import certificate
       - name: Setup keychain and provisioning profile
         env:
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
@@ -33,20 +31,30 @@ jobs:
           echo "$IOS_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
           echo "$IOS_DEVELOPMENT_PROFILE_BASE64" | base64 --decode > $PROFILE_PATH
 
+          # Extract UUID from provisioning profile
+          UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -)
+          echo "Extracted UUID: $UUID"
+          echo "PROVISIONING_PROFILE_UUID=$UUID" >> $GITHUB_ENV
+
           # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
           security set-keychain-settings -lut 21600 $KEYCHAIN_PATH
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
+
+          # Import certificate
           security import $CERT_PATH -P "$IOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k $KEYCHAIN_PATH
-          security list-keychain -d user -s $KEYCHAIN_PATH
+          security list-keychains -d user -s $KEYCHAIN_PATH $(security default-keychain -d user)
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
-          # Copy provisioning profile
+          # Copy provisioning profile with correct UUID
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles
+          cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
 
-          # Debug: list installed profiles
+          # Debug: list installed profiles and certificate
           echo "Installed provisioning profiles:"
           ls -l ~/Library/MobileDevice/Provisioning\ Profiles
+          echo "Certificates in keychain:"
+          security find-certificate -a -p $KEYCHAIN_PATH
 
       # 4️⃣ Install dependencies
       - name: Install dependencies
@@ -56,23 +64,17 @@ jobs:
           pod install --repo-update
           cd ..
 
-      # 5️⃣ Update Info.plist bundle ID before build
-      - name: Update Info.plist
-        run: |
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${{ secrets.APPLE_BUNDLE_ID }}" ios/CICDDEMOAPP/Info.plist
-          echo "Updated Info.plist with bundle ID ${{ secrets.APPLE_BUNDLE_ID }}"
-
-      # 6️⃣ Clean DerivedData
-      - name: Clean DerivedData
-        run: rm -rf ~/Library/Developer/Xcode/DerivedData/*
-
-      # 7️⃣ Build Xcode archive (generic iOS device)
+      # 5️⃣ Build Xcode archive (generic iOS device)
       - name: Build archive
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
         run: |
+          # Clean DerivedData to avoid cache issues
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+
+          # Build with explicit provisioning profile UUID and disable previews
           xcodebuild -workspace ios/CICDDEMOAPP.xcworkspace \
             -scheme "CICDDEMOAPP" \
             -configuration Release \
@@ -82,17 +84,43 @@ jobs:
             DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
             CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" \
             PRODUCT_BUNDLE_IDENTIFIER=$APPLE_BUNDLE_ID \
+            CODE_SIGN_STYLE="Manual" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
+            ENABLE_PREVIEWS=NO \
             clean archive
 
-      # 8️⃣ Export IPA
+      # 6️⃣ Export IPA
       - name: Export IPA
         env:
-          EXPORT_OPTIONS_PLIST: ${{ secrets.EXPORT_OPTIONS_PLIST }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
         run: |
           EXPORT_PATH=$RUNNER_TEMP/build
           mkdir -p $EXPORT_PATH
           EXPORT_PLIST=$RUNNER_TEMP/ExportOptions.plist
-          echo "$EXPORT_OPTIONS_PLIST" | base64 --decode > $EXPORT_PLIST
+
+          # Create ExportOptions.plist for Ad Hoc distribution
+          cat << EOF > $EXPORT_PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>ad-hoc</string>
+              <key>teamID</key>
+              <string>$APPLE_TEAM_ID</string>
+              <key>provisioningProfiles</key>
+              <dict>
+                  <key>$APPLE_BUNDLE_ID</key>
+                  <string>$PROVISIONING_PROFILE_UUID</string>
+              </dict>
+              <key>signingCertificate</key>
+              <string>$APPLE_SIGNING_IDENTITY</string>
+              <key>signingStyle</key>
+              <string>manual</string>
+          </dict>
+          </plist>
+          EOF
 
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/CICDDEMOAPP.xcarchive \
@@ -103,7 +131,7 @@ jobs:
           echo "Exported IPA:"
           ls -l $EXPORT_PATH
 
-      # 9️⃣ Upload IPA artifact
+      # 7️⃣ Upload IPA artifact
       - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
