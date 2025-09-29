@@ -1,0 +1,56 @@
+name: Android CI/CD
+
+# 🚀 ક્યારે run થવું જોઈએ
+on:
+  push:
+    branches: [ "main" ]       # main branch પર push થાય ત્યારે run થશે
+  pull_request:
+    branches: [ "main" ]       # pull request open થાય ત્યારે run થશે
+
+jobs:
+  android-build:
+    name: Build Android Debug & Release
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1️⃣ Code Checkout
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2️⃣ Setup Node.js
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'yarn'    # node_modules cache માટે auto
+
+      # 3️⃣ Install Dependencies
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      # 4️⃣ Setup JDK (Java 17 recommended for Android Gradle Plugin)
+      - name: Setup Java
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: 17
+          cache: gradle
+
+      # 5️⃣ Android Debug Build
+      - name: Build Debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug --no-daemon
+
+      # 6️⃣ Android Release Build
+      - name: Build Release APK
+        working-directory: android
+        run: ./gradlew assembleRelease --no-daemon
+
+      # 7️⃣ Upload Artifacts (Debug & Release APK)
+      - name: Upload APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apks
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/release/app-release.apk
