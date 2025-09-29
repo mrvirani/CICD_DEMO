@@ -1,8 +1,7 @@
 name: "Build iOS IPA"
 
 on:
-  push:
-     branches: [ "main" ]
+  workflow_dispatch:
 
 jobs:
   build_ios:
@@ -29,7 +28,6 @@ jobs:
           PROFILE_PATH=$RUNNER_TEMP/profile.mobileprovision
           KEYCHAIN_PATH=$RUNNER_TEMP/build.keychain-db
 
-          # Decode certificate and profile
           echo "$IOS_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
           echo "$IOS_DEVELOPMENT_PROFILE_BASE64" | base64 --decode > $PROFILE_PATH
 
@@ -46,6 +44,10 @@ jobs:
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles
 
+          # Debug: list installed profiles
+          echo "Installed provisioning profiles:"
+          ls -l ~/Library/MobileDevice/Provisioning\ Profiles
+
       # 4️⃣ Install dependencies
       - name: Install dependencies
         run: |
@@ -59,6 +61,7 @@ jobs:
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
         run: |
           xcodebuild -workspace ios/CICDDEMOAPP.xcworkspace \
           -scheme "CICDDEMOAPP" \
@@ -67,6 +70,7 @@ jobs:
           -archivePath $RUNNER_TEMP/CICDDEMOAPP.xcarchive \
           DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
           CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" \
+          PRODUCT_BUNDLE_IDENTIFIER=$APPLE_BUNDLE_ID \
           clean archive
 
       # 6️⃣ Export IPA
@@ -83,6 +87,10 @@ jobs:
           -archivePath $RUNNER_TEMP/CICDDEMOAPP.xcarchive \
           -exportPath $EXPORT_PATH \
           -exportOptionsPlist $EXPORT_PLIST
+
+          # Debug: list IPA
+          echo "Exported IPA:"
+          ls -l $EXPORT_PATH
 
       # 7️⃣ Upload IPA artifact
       - name: Upload IPA
