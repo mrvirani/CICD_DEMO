@@ -73,7 +73,7 @@ jobs:
         run: |
           UUID=`/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< $(security cms -D -i "$RUNNER_TEMP/build_pp.mobileprovision")`
           xcodebuild clean archive \
-            -project CICDDEMOAPP.xcodeproj \
+            -workspace CICDDEMOAPP.xcworkspace \
             -scheme CICDDEMOAPP \
             -sdk iphoneos \
             -configuration Release \
