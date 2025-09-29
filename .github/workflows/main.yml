@@ -1,16 +1,15 @@
-name: Android CI/CD
+name: iOS CI/CD
 
-# 🚀 ક્યારે run થવું જોઈએ
 on:
   push:
-    branches: [ "main" ]       # main branch પર push થાય ત્યારે run થશે
+    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]       # pull request open થાય ત્યારે run થશે
+    branches: [ "main" ]
 
 jobs:
-  android-build:
-    name: Build Android Debug & Release
-    runs-on: ubuntu-latest
+  ios-build:
+    name: Build iOS App
+    runs-on: macos-latest
 
     steps:
       # 1️⃣ Code Checkout
@@ -22,35 +21,47 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'yarn'    # node_modules cache માટે auto
+          cache: 'yarn'
 
       # 3️⃣ Install Dependencies
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      # 4️⃣ Setup JDK (Java 17 recommended for Android Gradle Plugin)
-      - name: Setup Java
-        uses: actions/setup-java@v3
+      # 4️⃣ Setup Ruby (for fastlane)
+      - name: Setup Ruby
+        uses: ruby/setup-ruby@v1
         with:
-          distribution: 'temurin'
-          java-version: 17
-          cache: gradle
+          ruby-version: 3.1
 
-      # 5️⃣ Android Debug Build
-      - name: Build Debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+      # 5️⃣ Install fastlane
+      - name: Install fastlane
+        run: gem install fastlane
 
-      # 6️⃣ Android Release Build
-      - name: Build Release APK
-        working-directory: android
-        run: ./gradlew assembleRelease --no-daemon
+      # 6️⃣ Setup Certificates & Provisioning Profile
+      - name: Setup iOS Certificates
+        run: |
+          echo ${{ secrets.IOS_CERTIFICATE_BASE64 }} | base64 --decode > certificate.p12
+          security create-keychain -p "" build.keychain
+          security import certificate.p12 -k build.keychain -P ${{ secrets.IOS_CERTIFICATE_PASSWORD }} -T /usr/bin/codesign
+          echo ${{ secrets.IOS_PROVISIONING_PROFILE_BASE64 }} | base64 --decode > profile.mobileprovision
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          cp profile.mobileprovision ~/Library/MobileDevice/Provisioning\ Profiles/
+          security list-keychains -s build.keychain
 
-      # 7️⃣ Upload Artifacts (Debug & Release APK)
-      - name: Upload APKs
+      # 7️⃣ iOS Build using fastlane
+      - name: Build iOS IPA
+        run: |
+          fastlane gym \
+            --scheme "CICDDEMOAPP" \
+            --export_method "development" \
+            --clean \
+            --output_directory "./build" \
+            --output_name "CICDDEMOAPP.ipa" \
+            --silent
+
+      # 8️⃣ Upload IPA
+      - name: Upload IPA
         uses: actions/upload-artifact@v4
         with:
-          name: android-apks
-          path: |
-            android/app/build/outputs/apk/debug/app-debug.apk
-            android/app/build/outputs/apk/release/app-release.apk
+          name: ios-ipa
+          path: build/CICDDEMOAPP.ipa
