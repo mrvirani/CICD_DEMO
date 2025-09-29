@@ -2,7 +2,6 @@ name: "Build iOS IPA"
 on:
   push:
     branches: [ "main" ]
-    
 jobs:
   build_ios:
     runs-on: macos-latest
@@ -31,10 +30,14 @@ jobs:
           echo "$IOS_CERTIFICATE_BASE64" | base64 --decode > $CERT_PATH
           echo "$IOS_DEVELOPMENT_PROFILE_BASE64" | base64 --decode > $PROFILE_PATH
 
-          # Extract UUID from provisioning profile
+          # Extract UUID and details from provisioning profile
           UUID=$(security cms -D -i "$PROFILE_PATH" | plutil -extract UUID raw -)
           echo "Extracted UUID: $UUID"
           echo "PROVISIONING_PROFILE_UUID=$UUID" >> $GITHUB_ENV
+
+          # Debug: Inspect provisioning profile details
+          echo "Provisioning Profile Details:"
+          security cms -D -i "$PROFILE_PATH" | plutil -p -
 
           # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
@@ -46,15 +49,18 @@ jobs:
           security list-keychains -d user -s $KEYCHAIN_PATH $(security default-keychain -d user)
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" $KEYCHAIN_PATH
 
+          # Debug: List certificates in keychain to verify import
+          echo "Certificates in keychain:"
+          security find-certificate -a -c "iPhone" -p $KEYCHAIN_PATH
+          security find-certificate -a -c "Apple" -p $KEYCHAIN_PATH
+
           # Copy provisioning profile with correct UUID
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
           cp $PROFILE_PATH ~/Library/MobileDevice/Provisioning\ Profiles/$UUID.mobileprovision
 
-          # Debug: list installed profiles and certificate
+          # Debug: List installed provisioning profiles
           echo "Installed provisioning profiles:"
           ls -l ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "Certificates in keychain:"
-          security find-certificate -a -p $KEYCHAIN_PATH
 
       # 4️⃣ Install dependencies
       - name: Install dependencies
@@ -74,7 +80,7 @@ jobs:
           # Clean DerivedData to avoid cache issues
           rm -rf ~/Library/Developer/Xcode/DerivedData/*
 
-          # Build with explicit provisioning profile UUID and disable previews
+          # Build with verbose output for debugging
           xcodebuild -workspace ios/CICDDEMOAPP.xcworkspace \
             -scheme "CICDDEMOAPP" \
             -configuration Release \
@@ -87,6 +93,7 @@ jobs:
             CODE_SIGN_STYLE="Manual" \
             PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
             ENABLE_PREVIEWS=NO \
+            -verbose \
             clean archive
 
       # 6️⃣ Export IPA
@@ -94,6 +101,7 @@ jobs:
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
         run: |
           EXPORT_PATH=$RUNNER_TEMP/build
           mkdir -p $EXPORT_PATH
@@ -122,12 +130,16 @@ jobs:
           </plist>
           EOF
 
+          # Debug: Display ExportOptions.plist
+          echo "ExportOptions.plist contents:"
+          cat $EXPORT_PLIST
+
           xcodebuild -exportArchive \
             -archivePath $RUNNER_TEMP/CICDDEMOAPP.xcarchive \
             -exportPath $EXPORT_PATH \
             -exportOptionsPlist $EXPORT_PLIST
 
-          # Debug: list IPA
+          # Debug: List exported IPA
           echo "Exported IPA:"
           ls -l $EXPORT_PATH
 
