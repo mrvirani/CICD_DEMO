@@ -66,16 +66,20 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
           APPLE_BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
         run: |
+          # Clean DerivedData to avoid cache issues
+          rm -rf ~/Library/Developer/Xcode/DerivedData/*
+      
           xcodebuild -workspace ios/CICDDEMOAPP.xcworkspace \
-          -scheme "CICDDEMOAPP" \
-          -configuration Release \
-          -sdk iphoneos \
-          -archivePath $RUNNER_TEMP/CICDDEMOAPP.xcarchive \
-          -destination "generic/platform=iOS" \
-          DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
-          CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" \
-          PRODUCT_BUNDLE_IDENTIFIER=$APPLE_BUNDLE_ID \
-          clean archive
+            -scheme "CICDDEMOAPP" \
+            -configuration Release \
+            -sdk iphoneos \
+            -archivePath $RUNNER_TEMP/CICDDEMOAPP.xcarchive \
+            -destination "generic/platform=iOS" \
+            DEVELOPMENT_TEAM=$APPLE_TEAM_ID \
+            CODE_SIGN_IDENTITY="$APPLE_SIGNING_IDENTITY" \
+            PRODUCT_BUNDLE_IDENTIFIER=$APPLE_BUNDLE_ID \
+            clean archive
+
 
       # 6️⃣ Export IPA
       - name: Export IPA
