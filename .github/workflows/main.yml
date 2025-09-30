@@ -1,18 +1,15 @@
 name: React Native Android and iOS Builds
-
 on:
   push:
     branches:
       - main
   pull_request:
-
 jobs:
   ios-adhoc-build:
     name: Build iOS IPA (Ad Hoc)
     runs-on: macos-latest
     env:
       NODE_VERSION: '18'
-
     steps:
       # Clean derived data
       - name: Clean Derived Data
@@ -22,18 +19,15 @@ jobs:
       # Checkout code
       - name: Checkout repository
         uses: actions/checkout@v4
-
       # Set up Node.js
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
-
       # Install npm dependencies
       - name: Install npm dependencies
         run: npm install
-
       # Install CocoaPods
       - name: Install CocoaPods
         run: |
@@ -47,20 +41,20 @@ jobs:
       # Fix Bundle Identifier in Xcode Project
       - name: Fix Bundle Identifier in Xcode Project
         env:
-          BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID_DEV }}
+          BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}  # Changed to consistent secret (was APPLE_BUNDLE_ID_DEV)
         run: |
           cd ios
           echo "🔧 Setting bundle identifier: $BUNDLE_ID"
-          
+         
           # Use sed to update bundle identifier
           sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = \"$BUNDLE_ID\";/g" CICDDEMOAPP.xcodeproj/project.pbxproj || \
           sed -i '' "/buildSettings = {/,/};/s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = \"$BUNDLE_ID\";/g" CICDDEMOAPP.xcodeproj/project.pbxproj
-          
+         
           echo "✅ Bundle identifier set"
       # Setup code signing for ad hoc
       - name: Setup Ad Hoc Code Signing
         env:
-          IOS_DEVELOPMENT_PROFILE_BASE64: ${{ secrets.IOS_DEVELOPMENT_PROFILE_BASE64 }}
+          IOS_ADHOC_PROFILE_BASE64: ${{ secrets.IOS_DEVELOPMENT_PROFILE_BASE64 }}  # Rename secret to IOS_ADHOC_PROFILE_BASE64 in GitHub for clarity
           IOS_CERTIFICATE_BASE64: ${{ secrets.IOS_CERTIFICATE_BASE64 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -78,18 +72,23 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$IOS_CERTIFICATE_PASSWORD" build.keychain
           echo "📱 Importing ad hoc provisioning profile..."
           mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
-          echo "$IOS_DEVELOPMENT_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
+          echo "$IOS_ADHOC_PROFILE_BASE64" | base64 --decode > ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision
           echo "📋 Extracting provisioning profile info..."
           security cms -D -i ~/Library/MobileDevice/Provisioning\ Profiles/build.mobileprovision > profile.plist
           PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print :UUID" profile.plist)
           PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print :Name" profile.plist)
           echo "PROFILE_UUID=$PROFILE_UUID" >> $GITHUB_ENV
           echo "PROFILE_NAME=$PROFILE_NAME" >> $GITHUB_ENV
-          
+         
           echo "✅ Ad hoc code signing setup complete"
           echo "Profile UUID: $PROFILE_UUID"
           echo "Profile Name: $PROFILE_NAME"
-      # Create ad hoc export options plist
+      # Debug: List available signing identities (ADD THIS NEW STEP)
+      - name: Debug Signing Identities
+        run: |
+          security find-identity -v -p codesigning build.keychain
+          echo "↑↑↑ Check if 'iPhone Distribution' or similar appears above. If not, your cert is wrong."
+      # Create ad hoc export options plist (FIXED: Use PROFILE_NAME instead of UUID)
       - name: Create Ad Hoc exportOptions.plist
         env:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -113,14 +112,14 @@ jobs:
               <key>provisioningProfiles</key>
               <dict>
                   <key>$BUNDLE_ID</key>
-                  <string>$PROFILE_UUID</string>
+                  <string>$PROFILE_NAME</string>  # FIXED: Use name, not UUID
               </dict>
               <key>thinning</key>
               <string>&lt;none&gt;</string>
           </dict>
           </plist>
           EOF
-          
+         
           echo "✅ Ad hoc exportOptions.plist created"
           echo "📋 Content:"
           cat ios/exportOptions.plist
@@ -131,15 +130,14 @@ jobs:
           BUNDLE_ID: ${{ secrets.APPLE_BUNDLE_ID }}
         run: |
           cd ios
-          
-          echo "🏗️  Cleaning build directory..."
+         
+          echo "🏗️ Cleaning build directory..."
           xcodebuild clean -workspace CICDDEMOAPP.xcworkspace -scheme CICDDEMOAPP -configuration Release -destination "generic/platform=iOS"
-
-          
+         
           echo "🔍 Verifying project setup..."
           xcodebuild -workspace CICDDEMOAPP.xcworkspace -scheme CICDDEMOAPP -configuration Release -showBuildSettings > build_settings.log
           grep -E "(PRODUCT_BUNDLE_IDENTIFIER|PROVISIONING_PROFILE|DEVELOPMENT_TEAM|CODE_SIGN_IDENTITY)" build_settings.log || true
-          
+         
           echo "🚀 Building archive for ad hoc distribution..."
           xcodebuild archive \
             -workspace CICDDEMOAPP.xcworkspace \
@@ -151,10 +149,10 @@ jobs:
             PRODUCT_BUNDLE_IDENTIFIER="$BUNDLE_ID" \
             PROVISIONING_PROFILE_SPECIFIER="$PROFILE_UUID" \
             CODE_SIGN_STYLE="Manual" \
-            CODE_SIGN_IDENTITY="${{ secrets.APPLE_SIGNING_IDENTITY }}" \
+            CODE_SIGN_IDENTITY="${{ secrets.APPLE_SIGNING_IDENTITY }}" \  # This will now be "iPhone Distribution"
             CURRENT_PROJECT_VERSION=1 \
             MARKETING_VERSION=1.0
-          
+         
           if [ -d "build/CICDDEMOAPP.xcarchive" ]; then
             echo "✅ Ad hoc archive created successfully!"
           else
@@ -166,16 +164,16 @@ jobs:
       - name: Export Ad Hoc IPA
         run: |
           cd ios
-          
+         
           echo "📦 Exporting Ad Hoc IPA..."
           xcodebuild -exportArchive \
             -archivePath build/CICDDEMOAPP.xcarchive \
             -exportOptionsPlist exportOptions.plist \
             -exportPath build \
             -allowProvisioningUpdates
-          
+         
           echo "✅ Ad hoc export completed"
-          
+         
           if compgen -G "build/*.ipa" > /dev/null; then
             IPA_FILE=$(ls build/*.ipa)
             echo "🎉 Ad Hoc IPA created: $IPA_FILE"
@@ -192,7 +190,6 @@ jobs:
           name: ios-app-adhoc
           path: ios/build/*.ipa
           retention-days: 30
-
       # Cleanup
       - name: Cleanup
         if: always()
