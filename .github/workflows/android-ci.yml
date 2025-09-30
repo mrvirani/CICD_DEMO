@@ -1,4 +1,13 @@
-ios-adhoc-build:
+name: React Native Android and iOS Builds
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+ ios-adhoc-build:
     name: Build iOS IPA (Ad Hoc)
     runs-on: macos-latest
     env:
@@ -44,8 +53,8 @@ ios-adhoc-build:
           echo "🔧 Setting bundle identifier: $BUNDLE_ID"
           
           # Use sed to update bundle identifier
-          sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = \"$BUNDLE_ID\";/g" cicddemo.xcodeproj/project.pbxproj || \
-          sed -i '' "/buildSettings = {/,/};/s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = \"$BUNDLE_ID\";/g" cicddemo.xcodeproj/project.pbxproj
+          sed -i '' "s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = \"$BUNDLE_ID\";/g" CICDDEMOAPP.xcodeproj/project.pbxproj || \
+          sed -i '' "/buildSettings = {/,/};/s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = \"$BUNDLE_ID\";/g" CICDDEMOAPP.xcodeproj/project.pbxproj
           
           echo "✅ Bundle identifier set"
       # Setup code signing for ad hoc
