@@ -133,7 +133,8 @@ jobs:
           cd ios
           
           echo "🏗️  Cleaning build directory..."
-          xcodebuild clean -workspace CICDDEMOAPP.xcworkspace -scheme CICDDEMOAPP -configuration Release
+          xcodebuild clean -workspace CICDDEMOAPP.xcworkspace -scheme CICDDEMOAPP -configuration Release -destination "generic/platform=iOS"
+
           
           echo "🔍 Verifying project setup..."
           xcodebuild -workspace CICDDEMOAPP.xcworkspace -scheme CICDDEMOAPP -configuration Release -showBuildSettings > build_settings.log
