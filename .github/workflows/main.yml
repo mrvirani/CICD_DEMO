@@ -1,4 +1,4 @@
-name: React Native Android and iOS Builds
+name: React Native Android and iOS Builds with Firebase setup
 
 on:
   push:
