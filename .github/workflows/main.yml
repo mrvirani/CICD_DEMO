@@ -57,6 +57,11 @@ jobs:
           sed -i '' "/buildSettings = {/,/};/s/PRODUCT_BUNDLE_IDENTIFIER = [^;]*;/PRODUCT_BUNDLE_IDENTIFIER = \"$BUNDLE_ID\";/g" CICDDEMOAPP.xcodeproj/project.pbxproj
           
           echo "✅ Bundle identifier set"
+      - name: Debug Provisioning Profile
+        run: |
+          echo "$IOS_DEVELOPMENT_PROFILE_BASE64" | base64 --decode > profile.mobileprovision
+          file profile.mobileprovision
+          head -20 profile.mobileprovision || true
       # Setup code signing for ad hoc
       - name: Setup Ad Hoc Code Signing
         env:
