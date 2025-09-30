@@ -1,4 +1,4 @@
-name: React Native iOS Development Build
+name: React Native iOS Development Buildd
 
 on:
   push:
